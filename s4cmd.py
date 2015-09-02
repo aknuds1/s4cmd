@@ -798,12 +798,35 @@ class S3Handler(object):
        that directory. Subdirectories will not be counted unless
        --recursive option is set.
     '''
+    def get_size_str(size):
+      if self.opt.human:
+        if size < 1024:
+          suffix = 'B'
+        elif size < 1024**2:
+          suffix = 'K'
+          size /= 1024
+        elif size < 1024**3:
+          suffix = 'M'
+          size /= 1024**2
+        elif size < 1024**4:
+         suffix = 'G'
+         size /= 1024**3
+        elif size < 1024**5:
+          suffix = 'T'
+          size /= 1024**4
+        elif size < 1024**6:
+          suffix = 'P'
+          size /= 1024**5
+        return '{}{}'.format(size, suffix)
+      else:
+        return str(size)
+
     result = []
     for src in self.source_expand(source):
       size = 0
       for f in self.s3walk(src):
         size += f['size']
-      result.append((src, size))
+      result.append((src, get_size_str(size)))
 
     return result
 
@@ -1428,6 +1451,10 @@ if __name__ == '__main__':
       '--max-singlepart-upload-size',
       help = 'files with size (in MB) greater than this will be uploaded in '
       'multipart transfers', type = int, default = 4500 * 1024 * 1024)
+  parser.add_option(
+      '-H', '--human',
+      help = '"Human-readable" output. Use unit suffixes: Byte, Kilobyte, Megabyte, Gigabyte, '
+        'Terabyte and Petabyte', action='store_true', default = False)
 
   (opt, args) = parser.parse_args()
   s4cmd_logging.configure(opt)
