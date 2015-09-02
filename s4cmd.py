@@ -66,6 +66,7 @@ TEMP_FILES = set()
 # Environment variable names for S3 credentials.
 S3_ACCESS_KEY_NAME = "S3_ACCESS_KEY"
 S3_SECRET_KEY_NAME = "S3_SECRET_KEY"
+S3_REGION_KEY_NAME = "S3_REGION"
 
 
 ##
@@ -190,6 +191,7 @@ def fail(message, exc_info = None, status = 1, stacktrace = False):
   '''
   text = message
   if exc_info:
+
     text += str(exc_info)
   error(text)
   if stacktrace:
@@ -442,19 +444,23 @@ class S3Handler(object):
   S3_KEYS = None
 
   @staticmethod
-  def s3_keys_from_env():
-    '''Retrieve S3 access keys from the environment, or None if not present.'''
+  def s3_config_from_env():
+    '''Retrieve S3 config from the environment, or None if not present.'''
     env = os.environ
-    if S3_ACCESS_KEY_NAME in env and S3_SECRET_KEY_NAME in env:
+    if S3_ACCESS_KEY_NAME in env and S3_SECRET_KEY_NAME and S3_REGION_KEY_NAME in env:
       keys = (env[S3_ACCESS_KEY_NAME], env[S3_SECRET_KEY_NAME])
-      debug("read S3 keys from environment")
-      return keys
+      region = env[S3_REGION_KEY_NAME]
+      debug("read S3 config from environment")
+      return {
+        'keys': keys,
+        'region': region,
+      }
     else:
       return None
 
   @staticmethod
-  def s3_keys_from_s3cfg(opt):
-    '''Retrieve S3 access key settings from s3cmd's config file, if present; otherwise return None.'''
+  def s3_config_from_s3cfg(opt):
+    '''Retrieve S3 access config from s3cmd's config file, if present; otherwise return None.'''
     try:
       if opt.s3cfg != None:
         s3cfg_path = "%s" % opt.s3cfg
@@ -465,21 +471,30 @@ class S3Handler(object):
       config = ConfigParser.ConfigParser()
       config.read(s3cfg_path)
       keys = config.get("default", "access_key"), config.get("default", "secret_key")
-      debug("read S3 keys from $HOME/.s3cfg file")
-      return keys
+      region = config.get("default", "region")
+      debug("read S3 config from $HOME/.s3cfg file")
+      return {
+        'keys': keys,
+        'region': region,
+      }
     except Exception as e:
       info("could not read S3 keys from %s file; skipping (%s)", s3cfg_path, e)
       return None
 
   @staticmethod
-  def init_s3_keys(opt):
-    '''Initialize s3 access keys from environment variable or s3cfg config file.'''
-    S3Handler.S3_KEYS = S3Handler.s3_keys_from_env() or S3Handler.s3_keys_from_s3cfg(opt)
+  def init_s3_config(opt):
+    '''Initialize s3 config from environment variable or s3cfg config file.'''
+    cfg = S3Handler.s3_config_from_env() or S3Handler.s3_config_from_s3cfg(opt)
+    S3Handler.S3_KEYS = cfg['keys']
+    S3Handler.S3_REGION = cfg['region']
 
   def __init__(self, opt):
     '''Constructor, connect to S3 store'''
     self.s3 = None
     self.opt = opt
+    if not boto.config.get('s3', 'use-sigv4'):
+      boto.config.add_section('s3')
+      boto.config.set('s3', 'use-sigv4', 'True')
     self.connect()
 
   def __del__(self):
@@ -492,8 +507,8 @@ class S3Handler(object):
     '''Connect to S3 storage'''
     try:
       if S3Handler.S3_KEYS:
-        self.s3 = boto.connect_s3(S3Handler.S3_KEYS[0],
-                                  S3Handler.S3_KEYS[1],
+        self.s3 = boto.s3.connect_to_region(S3Handler.S3_REGION, aws_access_key_id=S3Handler.S3_KEYS[0],
+                                  aws_secret_access_key=S3Handler.S3_KEYS[1],
                                   is_secure = self.opt.use_ssl,
                                   suppress_consec_slashes = False)
       else:
@@ -1417,8 +1432,8 @@ if __name__ == '__main__':
   (opt, args) = parser.parse_args()
   s4cmd_logging.configure(opt)
 
-  # Initalize keys for S3.
-  S3Handler.init_s3_keys(opt)
+  # Initalize config for S3.
+  S3Handler.init_s3_config(opt)
 
   try:
     CommandHandler(opt).run(args)
