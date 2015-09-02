@@ -1453,8 +1453,8 @@ if __name__ == '__main__':
       'multipart transfers', type = int, default = 4500 * 1024 * 1024)
   parser.add_option(
       '-H', '--human',
-      help = '"Human-readable" output. Use unit suffixes: Byte, Kilobyte, Megabyte, Gigabyte, '
-        'Terabyte and Petabyte', action='store_true', default = False)
+      help = '"Human-readable" output when getting size. Use unit suffixes: Byte, Kilobyte, '
+        'Megabyte, Gigabyte, Terabyte and Petabyte', action='store_true', default = False)
 
   (opt, args) = parser.parse_args()
   s4cmd_logging.configure(opt)
